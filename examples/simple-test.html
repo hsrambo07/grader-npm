@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs Simple Test</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .comparison {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .image-container {
+      flex: 1;
+    }
+    
+    img {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+    
+    button {
+      padding: 10px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 300px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs Simple Test</h1>
+  
+  <div class="container">
+    <div id="log"></div>
+    
+    <div class="buttons">
+      <button id="create-identity">1. Create Identity LUT</button>
+      <button id="apply-identity">2. Apply Identity LUT</button>
+      <button id="create-warm">3. Create Warm LUT</button>
+      <button id="apply-warm">4. Apply Warm LUT</button>
+      <button id="reset">Reset</button>
+    </div>
+    
+    <div class="comparison">
+      <div class="image-container">
+        <h3>Original</h3>
+        <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb" alt="Original" crossorigin="anonymous">
+      </div>
+      <div class="image-container">
+        <h3>Result</h3>
+        <img id="result" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb" alt="Result" crossorigin="anonymous">
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    import { createIdentityLut } from '../src/core/lutLoader.ts';
+    import { GlEngine } from '../src/core/glEngine.ts';
+    
+    const logElement = document.getElementById('log');
+    const resultImage = document.getElementById('result');
+    const originalImage = document.getElementById('original');
+    
+    let identityLut = null;
+    let warmLut = null;
+    let engine = null;
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Error handling
+    window.addEventListener('error', (event) => {
+      log(`ERROR: ${event.message} at ${event.filename}:${event.lineno}`);
+    });
+    
+    // Create identity LUT
+    document.getElementById('create-identity').addEventListener('click', () => {
+      try {
+        log('Creating identity LUT...');
+        identityLut = createIdentityLut(17);
+        log(`Created identity LUT with size ${identityLut.size} and ${identityLut.data.length} entries`);
+      } catch (error) {
+        log(`Error creating identity LUT: ${error.message}`);
+      }
+    });
+    
+    // Apply identity LUT
+    document.getElementById('apply-identity').addEventListener('click', () => {
+      try {
+        if (!identityLut) {
+          log('Identity LUT not created yet. Create it first.');
+          return;
+        }
+        
+        log('Initializing GL engine...');
+        engine = new GlEngine();
+        
+        log('Loading identity LUT...');
+        engine.loadLut(identityLut, 'identity');
+        
+        log('Applying identity LUT to image...');
+        const canvas = engine.apply(originalImage, 1.0);
+        
+        log('Updating result image...');
+        resultImage.src = canvas.toDataURL();
+        log('Identity LUT applied successfully');
+      } catch (error) {
+        log(`Error applying identity LUT: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Create warm LUT
+    document.getElementById('create-warm').addEventListener('click', () => {
+      try {
+        log('Creating warm LUT...');
+        
+        // Create a warm-tinted LUT manually
+        const size = 17;
+        const data = [];
+        
+        for (let z = 0; z < size; z++) {
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              // Convert to normalized coordinates [0,1]
+              const r = x / (size - 1);
+              const g = y / (size - 1);
+              const b = z / (size - 1);
+              
+              // Add warm tint - boost red, reduce blue
+              const finalR = Math.min(1.0, r * 1.1 + 0.05);
+              const finalG = g;
+              const finalB = Math.max(0.0, b * 0.9 - 0.05);
+              
+              data.push([finalR, finalG, finalB]);
+            }
+          }
+        }
+        
+        warmLut = { size, data, title: 'Warm' };
+        log(`Created warm LUT with size ${warmLut.size} and ${warmLut.data.length} entries`);
+      } catch (error) {
+        log(`Error creating warm LUT: ${error.message}`);
+      }
+    });
+    
+    // Apply warm LUT
+    document.getElementById('apply-warm').addEventListener('click', () => {
+      try {
+        if (!warmLut) {
+          log('Warm LUT not created yet. Create it first.');
+          return;
+        }
+        
+        log('Initializing GL engine (if needed)...');
+        if (!engine) {
+          engine = new GlEngine();
+        }
+        
+        log('Loading warm LUT...');
+        engine.loadLut(warmLut, 'warm');
+        
+        log('Applying warm LUT to image...');
+        const canvas = engine.apply(originalImage, 1.0);
+        
+        log('Updating result image...');
+        resultImage.src = canvas.toDataURL();
+        log('Warm LUT applied successfully');
+      } catch (error) {
+        log(`Error applying warm LUT: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Reset images
+    document.getElementById('reset').addEventListener('click', () => {
+      try {
+        log('Resetting images...');
+        resultImage.src = originalImage.src;
+        log('Images reset successfully');
+      } catch (error) {
+        log(`Error resetting images: ${error.message}`);
+      }
+    });
+    
+    // Log initial state
+    log('Page loaded. Click the buttons to test LUT functionality.');
+    log(`WebGL 2.0 supported: ${!!document.createElement('canvas').getContext('webgl2')}`);
+    log(`WebGL 1.0 supported: ${!!document.createElement('canvas').getContext('webgl')}`);
+  </script>
+</body>
+</html> 

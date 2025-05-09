@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs - WebGL2 Safe Test</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .test-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    
+    .test-case {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    img, canvas {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs - WebGL2 Safe Test</h1>
+  
+  <div class="container">
+    <div id="log"></div>
+    
+    <div class="test-grid">
+      <div class="test-case">
+        <h3>Original Image</h3>
+        <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600" crossorigin="anonymous">
+      </div>
+      
+      <div class="test-case">
+        <h3>WebGL2 Implementation</h3>
+        <div id="webgl2-output"></div>
+        <button id="test-webgl2">Apply LUT (WebGL2)</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // DOM elements
+    const logElement = document.getElementById('log');
+    const originalImage = document.getElementById('original');
+    const webgl2Output = document.getElementById('webgl2-output');
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Wait for image to load
+    originalImage.onload = function() {
+      log('Original image loaded');
+      log(`Image size: ${originalImage.naturalWidth}x${originalImage.naturalHeight}`);
+    };
+    
+    // Create a test LUT (warm tones)
+    function createWarmLut() {
+      const size = 17;
+      const data = [];
+      
+      for (let b = 0; b < size; b++) {
+        for (let g = 0; g < size; g++) {
+          for (let r = 0; r < size; r++) {
+            // Convert to normalized coordinates [0,1]
+            const rn = r / (size - 1);
+            const gn = g / (size - 1);
+            const bn = b / (size - 1);
+            
+            // More subtle warm tint to help with debugging
+            const finalR = Math.min(1.0, rn * 1.1);
+            const finalG = gn;
+            const finalB = Math.max(0.0, bn * 0.9);
+            
+            data.push([finalR, finalG, finalB]);
+          }
+        }
+      }
+      
+      return { size, data, title: 'Warm' };
+    }
+    
+    // Apply LUT with WebGL 2.0
+    document.getElementById('test-webgl2').addEventListener('click', () => {
+      try {
+        log('Testing WebGL 2.0 implementation...');
+        
+        // Force WebGL 2.0
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        
+        if (!gl) {
+          log('WebGL 2.0 not supported in this browser');
+          return;
+        }
+        
+        // Check for required extensions
+        const floatExt = gl.getExtension('EXT_color_buffer_float');
+        const floatLinearExt = gl.getExtension('OES_texture_float_linear');
+        
+        if (!floatExt) {
+          log('WARNING: EXT_color_buffer_float not supported, may use fallback');
+        }
+        
+        log('Creating LUT...');
+        const lut = createWarmLut();
+        
+        // Create a simple shader program
+        log('Creating shader program...');
+        const vertexShaderSource = `#version 300 es
+          in vec4 aPosition;
+          in vec2 aTexCoord;
+          out vec2 vTexCoord;
+          
+          void main() {
+            gl_Position = aPosition;
+            vTexCoord = aTexCoord;
+          }
+        `;
+        
+        const fragmentShaderSource = `#version 300 es
+          precision highp float;
+          precision highp sampler3D;
+          
+          uniform sampler2D uImage;
+          uniform sampler3D uLut;
+          
+          in vec2 vTexCoord;
+          out vec4 fragColor;
+          
+          void main() {
+            // WebGL textures have origin at bottom-left, flip Y coordinate
+            vec2 texCoord = vec2(vTexCoord.x, 1.0 - vTexCoord.y);
+            
+            vec4 color = texture(uImage, texCoord);
+            // Clamp color values to ensure they're in the valid range
+            vec3 lutCoord = clamp(color.rgb, 0.0, 1.0);
+            vec3 newColor = texture(uLut, lutCoord).rgb;
+            fragColor = vec4(newColor, color.a);
+          }
+        `;
+        
+        // Create shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        
+        // Check for shader compile errors
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+          log(`Vertex shader compilation failed: ${gl.getShaderInfoLog(vertexShader)}`);
+          return;
+        }
+        
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        
+        // Check for shader compile errors
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+          log(`Fragment shader compilation failed: ${gl.getShaderInfoLog(fragmentShader)}`);
+          return;
+        }
+        
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        
+        // Check for errors
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          log(`Shader program linking failed: ${gl.getProgramInfoLog(program)}`);
+          return;
+        }
+        
+        // Set up buffers
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,
+           1, -1,
+          -1,  1,
+           1,  1
+        ]), gl.STATIC_DRAW);
+        
+        const texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          0, 0,
+          1, 0,
+          0, 1,
+          1, 1
+        ]), gl.STATIC_DRAW);
+        
+        // Set up canvas and viewport
+        canvas.width = originalImage.naturalWidth;
+        canvas.height = originalImage.naturalHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        // Create and upload image texture
+        const imageTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, originalImage);
+        
+        // Convert LUT data to Float32Array
+        const flatData = [];
+        for (let i = 0; i < lut.data.length; i++) {
+          flatData.push(lut.data[i][0], lut.data[i][1], lut.data[i][2]);
+        }
+        const lutData = new Float32Array(flatData);
+        
+        // Create and upload LUT texture (3D texture for WebGL2)
+        const lutTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, lutTexture);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // Convert LUT data to byte format as a fallback
+        const byteData = new Uint8Array(lut.data.length * 3);
+        for (let i = 0; i < lut.data.length; i++) {
+          byteData[i * 3] = Math.round(lut.data[i][0] * 255);
+          byteData[i * 3 + 1] = Math.round(lut.data[i][1] * 255);
+          byteData[i * 3 + 2] = Math.round(lut.data[i][2] * 255);
+        }
+        
+        try {
+          // Try using float textures first (preferred for accuracy)
+          log('Attempting to use float textures for LUT...');
+          
+          // Use 3D textures with the LUT data
+          gl.texImage3D(
+            gl.TEXTURE_3D,
+            0,
+            gl.RGB32F, // Use the floating point internal format
+            lut.size,
+            lut.size,
+            lut.size,
+            0,
+            gl.RGB,
+            gl.FLOAT,
+            lutData
+          );
+          
+          log('Successfully created float 3D texture');
+        } catch (texError) {
+          // If float textures fail, fall back to byte textures
+          log(`Failed to create float texture: ${texError.message}`);
+          log('Falling back to UNSIGNED_BYTE texture...');
+          
+          try {
+            gl.texImage3D(
+              gl.TEXTURE_3D,
+              0,
+              gl.RGB8,
+              lut.size,
+              lut.size,
+              lut.size,
+              0,
+              gl.RGB,
+              gl.UNSIGNED_BYTE,
+              byteData
+            );
+            log('Successfully created UNSIGNED_BYTE 3D texture');
+          } catch (byteError) {
+            log(`Failed to create UNSIGNED_BYTE texture: ${byteError.message}`);
+            throw byteError;
+          }
+        }
+        
+        // Clear the canvas
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Render
+        gl.useProgram(program);
+        
+        // Set up attribute pointers
+        const posAttr = gl.getAttribLocation(program, 'aPosition');
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        const texAttr = gl.getAttribLocation(program, 'aTexCoord');
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texAttr);
+        gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        // Set uniforms
+        gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uLut'), 1);
+        
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, lutTexture);
+        
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Show result
+        webgl2Output.innerHTML = '';
+        webgl2Output.appendChild(canvas);
+        
+        log('WebGL 2.0 implementation complete');
+      } catch (error) {
+        log(`Error in WebGL 2.0 implementation: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Log initial state
+    log('Page loaded. Click the button to test LUT application.');
+    log(`WebGL 2.0 supported: ${!!document.createElement('canvas').getContext('webgl2')}`);
+  </script>
+</body>
+</html> 

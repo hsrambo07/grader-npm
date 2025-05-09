@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs - Method Comparison</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .implementation-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+    }
+    
+    .image-container {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    img, canvas {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: auto;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    button {
+      padding: 8px 12px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs - Method Comparison</h1>
+  
+  <div class="container">
+    <div id="log"></div>
+    
+    <div class="controls">
+      <button id="run-all">Run All Implementations</button>
+      <button id="reset-all">Reset All</button>
+    </div>
+    
+    <div class="implementation-grid">
+      <div class="image-container">
+        <h3>Original Image</h3>
+        <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500" crossorigin="anonymous">
+      </div>
+      
+      <div class="image-container">
+        <h3>JavaScript Implementation</h3>
+        <canvas id="js-output"></canvas>
+        <button id="run-js">Run JS</button>
+      </div>
+      
+      <div class="image-container">
+        <h3>WebGL 1.0 Implementation</h3>
+        <div id="webgl1-output"></div>
+        <button id="run-webgl1">Run WebGL1</button>
+      </div>
+      
+      <div class="image-container">
+        <h3>WebGL 2.0 Implementation</h3>
+        <div id="webgl2-output"></div>
+        <button id="run-webgl2">Run WebGL2</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // DOM elements
+    const logElement = document.getElementById('log');
+    const originalImage = document.getElementById('original');
+    const jsOutput = document.getElementById('js-output');
+    const webgl1Output = document.getElementById('webgl1-output');
+    const webgl2Output = document.getElementById('webgl2-output');
+    
+    // Feature detection
+    const hasWebGL1 = !!document.createElement('canvas').getContext('webgl');
+    const hasWebGL2 = !!document.createElement('canvas').getContext('webgl2');
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Wait for image to load
+    originalImage.onload = function() {
+      log('Original image loaded');
+      
+      // Set up JS canvas
+      jsOutput.width = originalImage.naturalWidth;
+      jsOutput.height = originalImage.naturalHeight;
+      const ctx = jsOutput.getContext('2d');
+      ctx.drawImage(originalImage, 0, 0);
+      
+      log(`Image size: ${originalImage.naturalWidth}x${originalImage.naturalHeight}`);
+      
+      // Enable buttons based on feature detection
+      document.getElementById('run-all').disabled = false;
+      document.getElementById('run-js').disabled = false;
+      document.getElementById('run-webgl1').disabled = !hasWebGL1;
+      document.getElementById('run-webgl2').disabled = !hasWebGL2;
+      
+      if (!hasWebGL1) log('WebGL 1.0 not supported in this browser');
+      if (!hasWebGL2) log('WebGL 2.0 not supported in this browser');
+    };
+    
+    // Create a test LUT (warm tones)
+    function createWarmLut() {
+      const size = 17;
+      const data = [];
+      
+      for (let b = 0; b < size; b++) {
+        for (let g = 0; g < size; g++) {
+          for (let r = 0; r < size; r++) {
+            // Convert to normalized coordinates [0,1]
+            const rn = r / (size - 1);
+            const gn = g / (size - 1);
+            const bn = b / (size - 1);
+            
+            // Add warm tint - boost red channel, reduce blue channel
+            const finalR = Math.min(1.0, rn * 1.2);
+            const finalG = gn;
+            const finalB = Math.max(0.0, bn * 0.8);
+            
+            data.push([finalR, finalG, finalB]);
+          }
+        }
+      }
+      
+      return { size, data, title: 'Warm' };
+    }
+    
+    // Run all implementations
+    document.getElementById('run-all').addEventListener('click', () => {
+      runJSImplementation();
+      if (hasWebGL1) runWebGL1Implementation();
+      if (hasWebGL2) runWebGL2Implementation();
+    });
+    
+    // Reset all
+    document.getElementById('reset-all').addEventListener('click', () => {
+      // Reset JS canvas
+      const jsCtx = jsOutput.getContext('2d');
+      jsCtx.clearRect(0, 0, jsOutput.width, jsOutput.height);
+      jsCtx.drawImage(originalImage, 0, 0);
+      
+      // Reset WebGL outputs
+      webgl1Output.innerHTML = '';
+      webgl2Output.innerHTML = '';
+      
+      log('All implementations reset');
+    });
+    
+    // JavaScript Implementation
+    document.getElementById('run-js').addEventListener('click', runJSImplementation);
+    
+    function runJSImplementation() {
+      try {
+        log('Running JavaScript implementation...');
+        
+        // Create LUT
+        const lut = createWarmLut();
+        
+        // Get canvas and context
+        const ctx = jsOutput.getContext('2d');
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, jsOutput.width, jsOutput.height);
+        const { data } = imageData;
+        
+        log(`Processing ${jsOutput.width}x${jsOutput.height} image...`);
+        
+        // Apply LUT
+        const startTime = performance.now();
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // Get pixel RGB values normalized to [0,1]
+          const r = data[i] / 255;
+          const g = data[i + 1] / 255;
+          const b = data[i + 2] / 255;
+          
+          // Find closest LUT indices
+          const size = lut.size;
+          const x = Math.min(Math.floor(r * (size - 1)), size - 1);
+          const y = Math.min(Math.floor(g * (size - 1)), size - 1);
+          const z = Math.min(Math.floor(b * (size - 1)), size - 1);
+          
+          // Get index in the flattened LUT array
+          const idx = x + y * size + z * size * size;
+          
+          // Apply LUT transformation
+          if (idx < lut.data.length) {
+            data[i] = Math.round(lut.data[idx][0] * 255);
+            data[i + 1] = Math.round(lut.data[idx][1] * 255);
+            data[i + 2] = Math.round(lut.data[idx][2] * 255);
+          }
+        }
+        
+        const endTime = performance.now();
+        
+        // Put processed data back
+        ctx.putImageData(imageData, 0, 0);
+        
+        log(`JavaScript implementation complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error in JS implementation: ${error.message}`);
+        console.error(error);
+      }
+    }
+    
+    // WebGL 1.0 Implementation
+    document.getElementById('run-webgl1').addEventListener('click', runWebGL1Implementation);
+    
+    function runWebGL1Implementation() {
+      if (!hasWebGL1) {
+        log('WebGL 1.0 not supported in this browser');
+        return;
+      }
+      
+      try {
+        log('Running WebGL 1.0 implementation...');
+        
+        // Create LUT
+        const lut = createWarmLut();
+        
+        // Create canvas and get context
+        const canvas = document.createElement('canvas');
+        canvas.width = originalImage.naturalWidth;
+        canvas.height = originalImage.naturalHeight;
+        const gl = canvas.getContext('webgl');
+        
+        // Create shaders
+        const vertexShaderSource = `
+          attribute vec4 aPosition;
+          attribute vec2 aTexCoord;
+          varying vec2 vTexCoord;
+          
+          void main() {
+            gl_Position = aPosition;
+            vTexCoord = aTexCoord;
+          }
+        `;
+        
+        const fragmentShaderSource = `
+          precision highp float;
+          
+          uniform sampler2D uImage;
+          uniform sampler2D uLut;
+          uniform float uSize;
+          
+          varying vec2 vTexCoord;
+          
+          vec2 lutCoordTo2D(vec3 lutCoord) {
+            float lutSize = uSize;
+            
+            lutCoord = clamp(lutCoord, 0.0, 1.0);
+            
+            vec3 scaled = lutCoord * (lutSize - 1.0);
+            float r = floor(scaled.r);
+            float g = floor(scaled.g);
+            float b = floor(scaled.b);
+            
+            r = min(r, lutSize - 1.0);
+            g = min(g, lutSize - 1.0);
+            b = min(b, lutSize - 1.0);
+            
+            float index = r + g * lutSize + b * lutSize * lutSize;
+            
+            float texWidth = lutSize * lutSize * lutSize;
+            
+            float u = (index + 0.5) / texWidth;
+            
+            return vec2(u, 0.5);
+          }
+          
+          void main() {
+            // WebGL textures have origin at bottom-left, flip Y coordinate
+            vec2 texCoord = vec2(vTexCoord.x, 1.0 - vTexCoord.y);
+            
+            vec4 color = texture2D(uImage, texCoord);
+            vec3 lutCoord = clamp(color.rgb, 0.0, 1.0);
+            vec2 lutUV = lutCoordTo2D(lutCoord);
+            vec3 newColor = texture2D(uLut, lutUV).rgb;
+            gl_FragColor = vec4(newColor, color.a);
+          }
+        `;
+        
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        
+        // Check compilation status
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(fragmentShader);
+          throw new Error(`Fragment shader compilation failed: ${info}`);
+        }
+        
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        
+        // Check link status
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          throw new Error(`Program linking failed: ${info}`);
+        }
+        
+        // Set up buffers
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,  1, -1,  -1, 1,  1, 1
+        ]), gl.STATIC_DRAW);
+        
+        const texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          0, 0, 1, 0, 0, 1, 1, 1
+        ]), gl.STATIC_DRAW);
+        
+        // Set viewport
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        // Measure performance
+        const startTime = performance.now();
+        
+        // Create image texture
+        const imageTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, originalImage);
+        
+        // Create LUT texture
+        const lutTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // Convert LUT data to Float32Array
+        const flatData = [];
+        for (let i = 0; i < lut.data.length; i++) {
+          flatData.push(lut.data[i][0], lut.data[i][1], lut.data[i][2]);
+        }
+        const lutData = new Float32Array(flatData);
+        
+        // Upload LUT data
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGB,
+          lut.data.length,
+          1,
+          0,
+          gl.RGB,
+          gl.FLOAT,
+          lutData
+        );
+        
+        // Use program
+        gl.useProgram(program);
+        
+        // Set attributes
+        const posAttr = gl.getAttribLocation(program, 'aPosition');
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        const texAttr = gl.getAttribLocation(program, 'aTexCoord');
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texAttr);
+        gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        // Set uniforms
+        gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uLut'), 1);
+        gl.uniform1f(gl.getUniformLocation(program, 'uSize'), lut.size);
+        
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        const endTime = performance.now();
+        
+        // Show result
+        webgl1Output.innerHTML = '';
+        webgl1Output.appendChild(canvas);
+        
+        log(`WebGL 1.0 implementation complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error in WebGL 1.0 implementation: ${error.message}`);
+        console.error(error);
+      }
+    }
+    
+    // WebGL 2.0
+    document.getElementById('run-webgl2').addEventListener('click', runWebGL2Implementation);
+    
+    function runWebGL2Implementation() {
+      if (!hasWebGL2) {
+        log('WebGL 2.0 not supported in this browser');
+        return;
+      }
+      
+      try {
+        log('Running WebGL 2.0 implementation...');
+        
+        // Create LUT
+        const lut = createWarmLut();
+        
+        // Create canvas and get context
+        const canvas = document.createElement('canvas');
+        canvas.width = originalImage.naturalWidth;
+        canvas.height = originalImage.naturalHeight;
+        const gl = canvas.getContext('webgl2');
+        
+        // Create shaders
+        const vertexShaderSource = `#version 300 es
+          in vec4 aPosition;
+          in vec2 aTexCoord;
+          out vec2 vTexCoord;
+          
+          void main() {
+            gl_Position = aPosition;
+            vTexCoord = aTexCoord;
+          }
+        `;
+        
+        const fragmentShaderSource = `#version 300 es
+          precision highp float;
+          precision highp sampler3D;
+          
+          uniform sampler2D uImage;
+          uniform sampler3D uLut;
+          
+          in vec2 vTexCoord;
+          out vec4 fragColor;
+          
+          void main() {
+            // WebGL textures have origin at bottom-left, flip Y coordinate
+            vec2 texCoord = vec2(vTexCoord.x, 1.0 - vTexCoord.y);
+            
+            vec4 color = texture(uImage, texCoord);
+            vec3 lutCoord = clamp(color.rgb, 0.0, 1.0);
+            vec3 newColor = texture(uLut, lutCoord).rgb;
+            fragColor = vec4(newColor, color.a);
+          }
+        `;
+        
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(vertexShader);
+          log(`Vertex shader compilation failed: ${info}`);
+          throw new Error(`Vertex shader compilation failed: ${info}`);
+        }
+        
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        
+        // Check compilation status
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(fragmentShader);
+          throw new Error(`Fragment shader compilation failed: ${info}`);
+        }
+        
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        
+        // Check link status
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          throw new Error(`Program linking failed: ${info}`);
+        }
+        
+        // Set up buffers
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,  1, -1,  -1, 1,  1, 1
+        ]), gl.STATIC_DRAW);
+        
+        const texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          0, 0, 1, 0, 0, 1, 1, 1
+        ]), gl.STATIC_DRAW);
+        
+        // Set viewport
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        // Measure performance
+        const startTime = performance.now();
+        
+        // Create image texture
+        const imageTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, originalImage);
+        
+        // Create LUT texture
+        const lutTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, lutTexture);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // Convert LUT data to Float32Array
+        const flatData = [];
+        for (let i = 0; i < lut.data.length; i++) {
+          flatData.push(lut.data[i][0], lut.data[i][1], lut.data[i][2]);
+        }
+        const lutData = new Float32Array(flatData);
+        
+        // Upload LUT data
+        gl.texImage3D(
+          gl.TEXTURE_3D,
+          0,
+          gl.RGB,
+          lut.size,
+          lut.size,
+          lut.size,
+          0,
+          gl.RGB,
+          gl.FLOAT,
+          lutData
+        );
+        
+        // Clear the canvas first
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Use program
+        gl.useProgram(program);
+        
+        // Set attributes
+        const posAttr = gl.getAttribLocation(program, 'aPosition');
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        const texAttr = gl.getAttribLocation(program, 'aTexCoord');
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texAttr);
+        gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        // Set uniforms
+        gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uLut'), 1);
+        
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_3D, lutTexture);
+        
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        const endTime = performance.now();
+        
+        // Show result
+        webgl2Output.innerHTML = '';
+        webgl2Output.appendChild(canvas);
+        
+        log(`WebGL 2.0 implementation complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error in WebGL 2.0 implementation: ${error.message}`);
+        console.error(error);
+      }
+    }
+    
+    // Disable buttons initially 
+    document.getElementById('run-all').disabled = true;
+    document.getElementById('run-js').disabled = true;
+    document.getElementById('run-webgl1').disabled = true;
+    document.getElementById('run-webgl2').disabled = true;
+    
+    // Log initial state
+    log('Page loaded. Waiting for image to load...');
+  </script>
+</body>
+</html> 

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    
+    h1 {
+      color: #1a73e8;
+      margin-bottom: 30px;
+    }
+    
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    
+    .image-container {
+      flex: 1;
+      min-width: 300px;
+    }
+    
+    .controls {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+      flex: 1;
+      min-width: 300px;
+    }
+    
+    .control-group {
+      margin-bottom: 20px;
+    }
+    
+    .control-group h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      color: #333;
+    }
+    
+    label {
+      display: block;
+      margin: 5px 0;
+      cursor: pointer;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      margin: 10px 0;
+    }
+    
+    .btn {
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .btn:hover {
+      background: #1557b0;
+    }
+    
+    .slider-value {
+      display: inline-block;
+      width: 40px;
+      text-align: right;
+    }
+    
+    img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .image-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 30px;
+    }
+    
+    .image-gallery img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      transition: transform 0.2s;
+      cursor: pointer;
+    }
+    
+    .image-gallery img:hover {
+      transform: translateY(-5px);
+    }
+    
+    footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 14px;
+      color: #666;
+    }
+
+    #status {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin: 20px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs Demo</h1>
+  
+  <div id="status"></div>
+  
+  <div class="container">
+    <div class="image-container">
+      <img id="hero" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb" alt="Example image" crossorigin="anonymous">
+    </div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <h3>LUT Mode</h3>
+        <label>
+          <input type="radio" name="mode" value="normal" checked> Normal
+        </label>
+        <label>
+          <input type="radio" name="mode" value="vintage"> Vintage
+        </label>
+        <label>
+          <input type="radio" name="mode" value="cinematic"> Cinematic
+        </label>
+        <label>
+          <input type="radio" name="mode" value="serious-vintage"> Serious Vintage
+        </label>
+        <label>
+          <input type="radio" name="mode" value="lights-out"> Lights Out
+        </label>
+        <label>
+          <input type="radio" name="mode" value="sci-fi"> Sci-Fi
+        </label>
+      </div>
+      
+      <div class="control-group">
+        <h3>Strength: <span class="slider-value" id="strength-value">1.0</span></h3>
+        <input type="range" id="strength" min="0" max="1" step="0.01" value="1">
+      </div>
+      
+      <div class="control-group">
+        <h3>Actions</h3>
+        <button class="btn" id="reset-btn">Reset Image</button>
+        <button class="btn" id="apply-all-btn">Apply to All Images</button>
+        <button class="btn" id="identity-btn">Apply Identity LUT</button>
+      </div>
+    </div>
+  </div>
+  
+  <h2>Image Gallery</h2>
+  <div class="image-gallery">
+    <img src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e" alt="Gallery image 1" data-grade crossorigin="anonymous">
+    <img src="https://images.unsplash.com/photo-1500534623283-312aade485b7" alt="Gallery image 2" data-grade crossorigin="anonymous">
+    <img src="https://images.unsplash.com/photo-1472214103451-9374bd1c798e" alt="Gallery image 3" data-grade crossorigin="anonymous">
+    <img src="https://images.unsplash.com/photo-1542224566-6e85f2e6772f" alt="Gallery image 4" data-grade crossorigin="anonymous">
+    <img src="https://images.unsplash.com/photo-1455218873509-8097305ee378" alt="Gallery image 5" data-grade crossorigin="anonymous">
+    <img src="https://images.unsplash.com/photo-1520962880247-cfaf541c8724" alt="Gallery image 6" data-grade crossorigin="anonymous">
+  </div>
+  
+  <footer>
+    <p>Demo for web-luts • A TypeScript library for applying color grading LUTs to web images</p>
+  </footer>
+  
+  <script type="module">
+    import { ColorGrader, createIdentityLut } from '../src/index.ts';
+    
+    // Get DOM elements
+    const hero = document.getElementById('hero');
+    const strengthSlider = document.getElementById('strength');
+    const strengthValue = document.getElementById('strength-value');
+    const resetBtn = document.getElementById('reset-btn');
+    const applyAllBtn = document.getElementById('apply-all-btn');
+    const identityBtn = document.getElementById('identity-btn');
+    const modeRadios = document.querySelectorAll('input[name="mode"]');
+    const status = document.getElementById('status');
+
+    // Helper to log status
+    function log(message) {
+      console.log(message);
+      status.textContent += message + '\n';
+      status.scrollTop = status.scrollHeight;
+    }
+
+    // Add error handling
+    window.addEventListener('error', (event) => {
+      log(`ERROR: ${event.message} at ${event.filename}:${event.lineno}`);
+    });
+
+    // Log WebGL capabilities
+    const canvas = document.createElement('canvas');
+    const gl2 = canvas.getContext('webgl2');
+    const gl1 = canvas.getContext('webgl');
+    log(`WebGL 2.0 supported: ${!!gl2}`);
+    log(`WebGL 1.0 supported: ${!!gl1}`);
+    
+    try {
+      // Initialize with no automatic processing
+      log('Initializing ColorGrader...');
+      ColorGrader.init({
+        selector: 'img[data-grade]', // Only process images with data-grade attribute
+        autoload: true, // Preload all LUTs
+        mode: 'normal', // Start with normal mode
+        strength: 1.0 // Full strength
+      });
+      log('ColorGrader initialized successfully!');
+      
+      // Apply to hero image
+      log('Applying normal LUT to hero image...');
+      ColorGrader.apply({
+        target: hero,
+        mode: 'normal'
+      }).then(() => {
+        log('Applied normal LUT to hero image');
+      }).catch(err => {
+        log(`Error applying LUT: ${err.message}`);
+      });
+      
+      // Mode selection
+      modeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          if (e.target.checked) {
+            const mode = e.target.value;
+            log(`Setting mode to ${mode}...`);
+            
+            // Apply to hero image
+            ColorGrader.setMode(mode, hero).then(() => {
+              log(`Applied ${mode} LUT to hero image`);
+            }).catch(err => {
+              log(`Error applying LUT: ${err.message}`);
+            });
+          }
+        });
+      });
+      
+      // Strength slider
+      strengthSlider.addEventListener('input', (e) => {
+        const strength = parseFloat(e.target.value);
+        strengthValue.textContent = strength.toFixed(2);
+        
+        // Update just the hero image
+        log(`Setting strength to ${strength}...`);
+        ColorGrader.setStrength(strength, hero).then(() => {
+          log(`Applied strength ${strength} to hero image`);
+        }).catch(err => {
+          log(`Error applying strength: ${err.message}`);
+        });
+      });
+      
+      // Reset button
+      resetBtn.addEventListener('click', () => {
+        log('Resetting hero image...');
+        ColorGrader.reset(hero);
+        
+        // Reset controls
+        strengthSlider.value = 1;
+        strengthValue.textContent = '1.00';
+        document.querySelector('input[name="mode"][value="normal"]').checked = true;
+        
+        log('Reset complete');
+      });
+      
+      // Apply to all button
+      applyAllBtn.addEventListener('click', () => {
+        const selectedMode = document.querySelector('input[name="mode"]:checked').value;
+        const strength = parseFloat(strengthSlider.value);
+        
+        log(`Applying ${selectedMode} LUT (strength: ${strength}) to all images...`);
+        
+        // Apply current settings to all gallery images
+        Promise.all([
+          ColorGrader.setMode(selectedMode, 'img[data-grade]'),
+          ColorGrader.setStrength(strength, 'img[data-grade]')
+        ]).then(() => {
+          log('Applied settings to all gallery images');
+        }).catch(err => {
+          log(`Error applying to all: ${err.message}`);
+        });
+      });
+      
+      // Apply identity LUT button
+      identityBtn.addEventListener('click', async () => {
+        log('Creating and applying identity LUT...');
+        
+        try {
+          // Create identity LUT directly
+          const identityLut = createIdentityLut(17);
+          
+          // Apply to hero image
+          await ColorGrader.apply({
+            target: hero,
+            lut: identityLut,
+            strength: 1.0
+          });
+          
+          log('Applied identity LUT to hero image');
+        } catch (err) {
+          log(`Error applying identity LUT: ${err.message}`);
+        }
+      });
+      
+    } catch (err) {
+      log(`INITIALIZATION ERROR: ${err.message}`);
+      console.error(err);
+    }
+  </script>
+</body>
+</html> 

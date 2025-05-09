@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGL Diagnostic</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    
+    h2 {
+      margin-top: 20px;
+    }
+    
+    .test-area {
+      margin-bottom: 30px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebGL Diagnostic</h1>
+  
+  <div id="log"></div>
+  
+  <div class="test-area">
+    <h2>WebGL Support</h2>
+    <button id="check-webgl1">Check WebGL 1.0</button>
+    <button id="check-webgl2">Check WebGL 2.0</button>
+    <button id="check-extensions">Check Extensions</button>
+  </div>
+  
+  <div class="test-area">
+    <h2>Float Texture Tests</h2>
+    <button id="test-float-textures-webgl1">Test Float Textures (WebGL1)</button>
+    <button id="test-float-textures-webgl2">Test Float Textures (WebGL2)</button>
+  </div>
+  
+  <div class="test-area">
+    <h2>3D Texture Tests</h2>
+    <button id="test-3d-textures">Test 3D Textures</button>
+  </div>
+  
+  <div class="test-area">
+    <h2>Clear Canvas Tests</h2>
+    <button id="test-clear-webgl1">Test Clear Canvas (WebGL1)</button>
+    <button id="test-clear-webgl2">Test Clear Canvas (WebGL2)</button>
+  </div>
+  
+  <script>
+    // DOM elements
+    const logElement = document.getElementById('log');
+    
+    // Logging function
+    function log(message, error = false) {
+      console.log(message);
+      if (error) {
+        console.error(message);
+        logElement.innerHTML += `<span style="color: red;">${message}</span>\n`;
+      } else {
+        logElement.innerHTML += message + '\n';
+      }
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Check WebGL 1.0 support
+    document.getElementById('check-webgl1').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl');
+        
+        if (!gl) {
+          log('❌ WebGL 1.0 NOT supported', true);
+          return;
+        }
+        
+        log('✅ WebGL 1.0 supported');
+        log(`  - Vendor: ${gl.getParameter(gl.VENDOR)}`);
+        log(`  - Renderer: ${gl.getParameter(gl.RENDERER)}`);
+        log(`  - Version: ${gl.getParameter(gl.VERSION)}`);
+        log(`  - Shading Language: ${gl.getParameter(gl.SHADING_LANGUAGE_VERSION)}`);
+        log(`  - Max Texture Size: ${gl.getParameter(gl.MAX_TEXTURE_SIZE)}`);
+        log(`  - Max Viewport Dimensions: ${gl.getParameter(gl.MAX_VIEWPORT_DIMS)}`);
+      } catch (error) {
+        log(`Error checking WebGL 1.0: ${error.message}`, true);
+      }
+    });
+    
+    // Check WebGL 2.0 support
+    document.getElementById('check-webgl2').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        
+        if (!gl) {
+          log('❌ WebGL 2.0 NOT supported', true);
+          return;
+        }
+        
+        log('✅ WebGL 2.0 supported');
+        log(`  - Vendor: ${gl.getParameter(gl.VENDOR)}`);
+        log(`  - Renderer: ${gl.getParameter(gl.RENDERER)}`);
+        log(`  - Version: ${gl.getParameter(gl.VERSION)}`);
+        log(`  - Shading Language: ${gl.getParameter(gl.SHADING_LANGUAGE_VERSION)}`);
+        log(`  - Max Texture Size: ${gl.getParameter(gl.MAX_TEXTURE_SIZE)}`);
+        log(`  - Max 3D Texture Size: ${gl.getParameter(gl.MAX_3D_TEXTURE_SIZE)}`);
+        log(`  - Max Viewport Dimensions: ${gl.getParameter(gl.MAX_VIEWPORT_DIMS)}`);
+      } catch (error) {
+        log(`Error checking WebGL 2.0: ${error.message}`, true);
+      }
+    });
+    
+    // Check WebGL extensions
+    document.getElementById('check-extensions').addEventListener('click', () => {
+      try {
+        // WebGL 1.0 extensions
+        const canvas1 = document.createElement('canvas');
+        const gl1 = canvas1.getContext('webgl');
+        
+        if (gl1) {
+          log('WebGL 1.0 Extensions:');
+          const extensions1 = gl1.getSupportedExtensions();
+          extensions1.forEach(ext => {
+            // Highlight important extensions
+            const important = [
+              'OES_texture_float',
+              'OES_texture_float_linear',
+              'WEBGL_color_buffer_float'
+            ].includes(ext);
+            
+            if (important) {
+              log(`  - ⭐ ${ext} (${gl1.getExtension(ext) ? '✅' : '❌'})`);
+            } else {
+              log(`  - ${ext} (${gl1.getExtension(ext) ? '✅' : '❌'})`);
+            }
+          });
+        } else {
+          log('WebGL 1.0 not supported, cannot check extensions', true);
+        }
+        
+        // WebGL 2.0 extensions
+        const canvas2 = document.createElement('canvas');
+        const gl2 = canvas2.getContext('webgl2');
+        
+        if (gl2) {
+          log('\nWebGL 2.0 Extensions:');
+          const extensions2 = gl2.getSupportedExtensions();
+          extensions2.forEach(ext => {
+            // Highlight important extensions
+            const important = [
+              'EXT_color_buffer_float',
+              'OES_texture_float_linear'
+            ].includes(ext);
+            
+            if (important) {
+              log(`  - ⭐ ${ext} (${gl2.getExtension(ext) ? '✅' : '❌'})`);
+            } else {
+              log(`  - ${ext} (${gl2.getExtension(ext) ? '✅' : '❌'})`);
+            }
+          });
+        } else {
+          log('WebGL 2.0 not supported, cannot check extensions', true);
+        }
+      } catch (error) {
+        log(`Error checking extensions: ${error.message}`, true);
+      }
+    });
+    
+    // Test float textures with WebGL 1.0
+    document.getElementById('test-float-textures-webgl1').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl');
+        
+        if (!gl) {
+          log('WebGL 1.0 not supported', true);
+          return;
+        }
+        
+        // Check for float texture extension
+        const floatExt = gl.getExtension('OES_texture_float');
+        const floatLinearExt = gl.getExtension('OES_texture_float_linear');
+        const floatBufferExt = gl.getExtension('WEBGL_color_buffer_float');
+        
+        log(`Float texture extension: ${floatExt ? '✅' : '❌'}`);
+        log(`Float texture linear extension: ${floatLinearExt ? '✅' : '❌'}`);
+        log(`Float color buffer extension: ${floatBufferExt ? '✅' : '❌'}`);
+        
+        if (!floatExt) {
+          log('Float textures not supported in WebGL 1.0', true);
+          return;
+        }
+        
+        // Create a float texture
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        
+        // Create a small float texture
+        const data = new Float32Array([0.1, 0.2, 0.3, 1.0]);
+        
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.FLOAT, data);
+          log('Successfully created 1x1 float texture in WebGL 1.0 ✅');
+          
+          // Try a larger texture
+          const largeData = new Float32Array(4 * 64 * 64);
+          for (let i = 0; i < largeData.length; i += 4) {
+            largeData[i] = Math.random();
+            largeData[i + 1] = Math.random();
+            largeData[i + 2] = Math.random();
+            largeData[i + 3] = 1.0;
+          }
+          
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 64, 64, 0, gl.RGBA, gl.FLOAT, largeData);
+          log('Successfully created 64x64 float texture in WebGL 1.0 ✅');
+        } catch (error) {
+          log(`Error creating float texture: ${error.message}`, true);
+        }
+      } catch (error) {
+        log(`Error testing float textures: ${error.message}`, true);
+      }
+    });
+    
+    // Test float textures with WebGL 2.0
+    document.getElementById('test-float-textures-webgl2').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        
+        if (!gl) {
+          log('WebGL 2.0 not supported', true);
+          return;
+        }
+        
+        // Check for extensions
+        const floatExt = gl.getExtension('EXT_color_buffer_float');
+        const floatLinearExt = gl.getExtension('OES_texture_float_linear');
+        
+        log(`Color buffer float extension: ${floatExt ? '✅' : '❌'}`);
+        log(`Float texture linear extension: ${floatLinearExt ? '✅' : '❌'}`);
+        
+        // Create a float texture
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        
+        // Create a small float texture
+        const data = new Float32Array([0.1, 0.2, 0.3, 1.0]);
+        
+        try {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, data);
+          log('Successfully created 1x1 float texture in WebGL 2.0 ✅');
+          
+          // Try a larger texture
+          const largeData = new Float32Array(4 * 64 * 64);
+          for (let i = 0; i < largeData.length; i += 4) {
+            largeData[i] = Math.random();
+            largeData[i + 1] = Math.random();
+            largeData[i + 2] = Math.random();
+            largeData[i + 3] = 1.0;
+          }
+          
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 64, 64, 0, gl.RGBA, gl.FLOAT, largeData);
+          log('Successfully created 64x64 float texture in WebGL 2.0 ✅');
+        } catch (error) {
+          log(`Error creating float texture: ${error.message}`, true);
+        }
+      } catch (error) {
+        log(`Error testing float textures: ${error.message}`, true);
+      }
+    });
+    
+    // Test 3D textures
+    document.getElementById('test-3d-textures').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2');
+        
+        if (!gl) {
+          log('WebGL 2.0 not supported, 3D textures require WebGL 2.0', true);
+          return;
+        }
+        
+        // Create a 3D texture
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_3D, texture);
+        
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        
+        // First, try a small 3D texture
+        const size = 4;
+        const data = new Float32Array(3 * size * size * size);
+        
+        try {
+          // Fill the texture with random data
+          for (let i = 0; i < data.length; i += 3) {
+            data[i] = Math.random();
+            data[i + 1] = Math.random();
+            data[i + 2] = Math.random();
+          }
+          
+          gl.texImage3D(
+            gl.TEXTURE_3D,
+            0,
+            gl.RGB,
+            size,
+            size,
+            size,
+            0,
+            gl.RGB,
+            gl.FLOAT,
+            data
+          );
+          
+          log(`Successfully created ${size}x${size}x${size} 3D texture ✅`);
+          
+          // Try a larger 3D texture
+          const largeSize = 16;
+          const largeData = new Float32Array(3 * largeSize * largeSize * largeSize);
+          
+          // Fill with rainbow colors
+          for (let z = 0; z < largeSize; z++) {
+            for (let y = 0; y < largeSize; y++) {
+              for (let x = 0; x < largeSize; x++) {
+                const index = 3 * (x + y * largeSize + z * largeSize * largeSize);
+                largeData[index] = x / (largeSize - 1);
+                largeData[index + 1] = y / (largeSize - 1);
+                largeData[index + 2] = z / (largeSize - 1);
+              }
+            }
+          }
+          
+          gl.texImage3D(
+            gl.TEXTURE_3D,
+            0,
+            gl.RGB,
+            largeSize,
+            largeSize,
+            largeSize,
+            0,
+            gl.RGB,
+            gl.FLOAT,
+            largeData
+          );
+          
+          log(`Successfully created ${largeSize}x${largeSize}x${largeSize} 3D texture ✅`);
+        } catch (error) {
+          log(`Error creating 3D texture: ${error.message}`, true);
+        }
+      } catch (error) {
+        log(`Error testing 3D textures: ${error.message}`, true);
+      }
+    });
+    
+    // Test canvas clear WebGL1
+    document.getElementById('test-clear-webgl1').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 200;
+        document.body.appendChild(canvas);
+        
+        const gl = canvas.getContext('webgl');
+        
+        if (!gl) {
+          log('WebGL 1.0 not supported', true);
+          return;
+        }
+        
+        // Clear with a red color
+        gl.clearColor(1.0, 0.0, 0.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        log('WebGL1 canvas should be visible with a red color ✅');
+      } catch (error) {
+        log(`Error testing canvas clear: ${error.message}`, true);
+      }
+    });
+    
+    // Test canvas clear WebGL2
+    document.getElementById('test-clear-webgl2').addEventListener('click', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 200;
+        document.body.appendChild(canvas);
+        
+        const gl = canvas.getContext('webgl2');
+        
+        if (!gl) {
+          log('WebGL 2.0 not supported', true);
+          return;
+        }
+        
+        // Clear with a blue color
+        gl.clearColor(0.0, 0.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        log('WebGL2 canvas should be visible with a blue color ✅');
+      } catch (error) {
+        log(`Error testing canvas clear: ${error.message}`, true);
+      }
+    });
+    
+    log('WebGL Diagnostic Tool');
+    log('Click the buttons above to run tests');
+  </script>
+</body>
+</html> 

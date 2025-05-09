@@ -1,0 +1,48 @@
+{
+  "name": "web-luts",
+  "version": "0.1.0",
+  "description": "WebGL-based LUT color grading for web images",
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite examples",
+    "build": "tsup",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "format": "prettier --write src"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "eslint": "^8.54.0",
+    "happy-dom": "^12.10.3",
+    "prettier": "^3.1.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.2",
+    "vite": "^5.0.2",
+    "vitest": "^0.34.6"
+  },
+  "keywords": [
+    "lut",
+    "color-grading",
+    "webgl",
+    "image-processing",
+    "filter"
+  ]
+} 

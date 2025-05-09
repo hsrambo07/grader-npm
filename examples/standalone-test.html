@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs - Standalone Test</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .test-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    
+    .test-case {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    img, canvas {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs - Standalone Test</h1>
+  
+  <div class="container">
+    <div id="log"></div>
+    
+    <div class="test-grid">
+      <div class="test-case">
+        <h3>Original Image</h3>
+        <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600" crossorigin="anonymous">
+      </div>
+      
+      <div class="test-case">
+        <h3>JS Fallback Implementation</h3>
+        <canvas id="js-canvas"></canvas>
+        <button id="test-js">Apply LUT (JS Fallback)</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // DOM elements
+    const logElement = document.getElementById('log');
+    const originalImage = document.getElementById('original');
+    const jsCanvas = document.getElementById('js-canvas');
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Wait for image to load
+    originalImage.onload = function() {
+      log('Original image loaded');
+      
+      // Set up JS canvas
+      jsCanvas.width = originalImage.naturalWidth;
+      jsCanvas.height = originalImage.naturalHeight;
+      const ctx = jsCanvas.getContext('2d');
+      ctx.drawImage(originalImage, 0, 0);
+      
+      log(`Image size: ${originalImage.naturalWidth}x${originalImage.naturalHeight}`);
+    };
+    
+    // Create a test LUT (warm tones)
+    function createWarmLut() {
+      const size = 17;
+      const data = [];
+      
+      for (let b = 0; b < size; b++) {
+        for (let g = 0; g < size; g++) {
+          for (let r = 0; r < size; r++) {
+            // Convert to normalized coordinates [0,1]
+            const rn = r / (size - 1);
+            const gn = g / (size - 1);
+            const bn = b / (size - 1);
+            
+            // Add warm tint - boost red channel, reduce blue channel
+            const finalR = Math.min(1.0, rn * 1.2);
+            const finalG = gn;
+            const finalB = Math.max(0.0, bn * 0.8);
+            
+            data.push([finalR, finalG, finalB]);
+          }
+        }
+      }
+      
+      return { size, data, title: 'Warm' };
+    }
+    
+    // Apply LUT with JS fallback
+    document.getElementById('test-js').addEventListener('click', () => {
+      try {
+        log('Testing JS fallback implementation...');
+        
+        // Create LUT
+        const lut = createWarmLut();
+        
+        // Get canvas and context
+        const ctx = jsCanvas.getContext('2d');
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, jsCanvas.width, jsCanvas.height);
+        const { data } = imageData;
+        
+        log(`Processing ${jsCanvas.width}x${jsCanvas.height} image...`);
+        
+        // Apply LUT
+        for (let i = 0; i < data.length; i += 4) {
+          // Get pixel RGB values normalized to [0,1]
+          const r = data[i] / 255;
+          const g = data[i + 1] / 255;
+          const b = data[i + 2] / 255;
+          
+          // Find closest LUT indices
+          const size = lut.size;
+          const x = Math.min(Math.floor(r * (size - 1)), size - 1);
+          const y = Math.min(Math.floor(g * (size - 1)), size - 1);
+          const z = Math.min(Math.floor(b * (size - 1)), size - 1);
+          
+          // Get index in the flattened LUT array
+          const idx = x + y * size + z * size * size;
+          
+          // Apply LUT transformation
+          if (idx < lut.data.length) {
+            data[i] = Math.round(lut.data[idx][0] * 255);
+            data[i + 1] = Math.round(lut.data[idx][1] * 255);
+            data[i + 2] = Math.round(lut.data[idx][2] * 255);
+          }
+        }
+        
+        // Put processed data back
+        ctx.putImageData(imageData, 0, 0);
+        
+        log('JS fallback implementation complete');
+      } catch (error) {
+        log(`Error in JS fallback implementation: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Log initial state
+    log('Page loaded. Click the button to test LUT application.');
+  </script>
+</body>
+</html> 

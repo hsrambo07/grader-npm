@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web LUTs JS Fallback Test</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .comparison {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .image-container {
+      flex: 1;
+    }
+    
+    img, canvas {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+    
+    button {
+      padding: 10px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web LUTs JS Fallback Implementation</h1>
+  
+  <div class="container">
+    <div id="log"></div>
+    
+    <div class="buttons">
+      <button id="create-identity">1. Create Identity LUT</button>
+      <button id="apply-identity">2. Apply Identity LUT</button>
+      <button id="create-warm">3. Create Warm LUT</button>
+      <button id="apply-warm">4. Apply Warm LUT</button>
+      <button id="reset">Reset</button>
+    </div>
+    
+    <div class="comparison">
+      <div class="image-container">
+        <h3>Original</h3>
+        <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600" alt="Original" crossorigin="anonymous">
+      </div>
+      <div class="image-container">
+        <h3>Result</h3>
+        <canvas id="result"></canvas>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module">
+    // DOM elements
+    const logElement = document.getElementById('log');
+    const originalImage = document.getElementById('original');
+    const resultCanvas = document.getElementById('result');
+    const ctx = resultCanvas.getContext('2d');
+    
+    let lut = null;
+    let originalImageData = null;
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Error handling
+    window.addEventListener('error', (event) => {
+      log(`ERROR: ${event.message} at ${event.filename}:${event.lineno}`);
+    });
+    
+    // Wait for image to load
+    originalImage.onload = function() {
+      log('Original image loaded');
+      
+      // Set canvas size to match image
+      resultCanvas.width = originalImage.naturalWidth;
+      resultCanvas.height = originalImage.naturalHeight;
+      
+      // Draw original image to canvas
+      ctx.drawImage(originalImage, 0, 0);
+      
+      // Store original image data
+      originalImageData = ctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
+      
+      log(`Canvas size: ${resultCanvas.width}x${resultCanvas.height}`);
+    };
+    
+    // Create identity LUT
+    document.getElementById('create-identity').addEventListener('click', () => {
+      try {
+        log('Creating identity LUT...');
+        const size = 17;
+        lut = { size, data: [] };
+        
+        // Create identity LUT data
+        for (let b = 0; b < size; b++) {
+          for (let g = 0; g < size; g++) {
+            for (let r = 0; r < size; r++) {
+              lut.data.push([r / (size - 1), g / (size - 1), b / (size - 1)]);
+            }
+          }
+        }
+        
+        log(`Created identity LUT with size ${lut.size} and ${lut.data.length} entries`);
+      } catch (error) {
+        log(`Error creating identity LUT: ${error.message}`);
+      }
+    });
+    
+    // Apply identity LUT
+    document.getElementById('apply-identity').addEventListener('click', () => {
+      try {
+        if (!lut) {
+          log('LUT not created yet. Create it first.');
+          return;
+        }
+        
+        if (!originalImageData) {
+          log('Image not loaded yet. Wait for it to load.');
+          return;
+        }
+        
+        log('Applying identity LUT to image...');
+        applyLutToImage();
+        log('Identity LUT applied successfully');
+      } catch (error) {
+        log(`Error applying identity LUT: ${error.message}`);
+      }
+    });
+    
+    // Create warm LUT
+    document.getElementById('create-warm').addEventListener('click', () => {
+      try {
+        log('Creating warm LUT...');
+        const size = 17;
+        lut = { size, data: [] };
+        
+        // Create warm LUT data
+        for (let b = 0; b < size; b++) {
+          for (let g = 0; g < size; g++) {
+            for (let r = 0; r < size; r++) {
+              const normalR = r / (size - 1);
+              const normalG = g / (size - 1);
+              const normalB = b / (size - 1);
+              
+              // Add warm tint - boost red, reduce blue
+              const finalR = Math.min(1.0, normalR * 1.1 + 0.05);
+              const finalG = normalG;
+              const finalB = Math.max(0.0, normalB * 0.9 - 0.05);
+              
+              lut.data.push([finalR, finalG, finalB]);
+            }
+          }
+        }
+        
+        log(`Created warm LUT with size ${lut.size} and ${lut.data.length} entries`);
+      } catch (error) {
+        log(`Error creating warm LUT: ${error.message}`);
+      }
+    });
+    
+    // Apply warm LUT
+    document.getElementById('apply-warm').addEventListener('click', () => {
+      try {
+        if (!lut) {
+          log('LUT not created yet. Create it first.');
+          return;
+        }
+        
+        if (!originalImageData) {
+          log('Image not loaded yet. Wait for it to load.');
+          return;
+        }
+        
+        log('Applying warm LUT to image...');
+        applyLutToImage();
+        log('Warm LUT applied successfully');
+      } catch (error) {
+        log(`Error applying warm LUT: ${error.message}`);
+      }
+    });
+    
+    // Reset canvas
+    document.getElementById('reset').addEventListener('click', () => {
+      try {
+        log('Resetting canvas...');
+        
+        if (originalImageData) {
+          ctx.putImageData(originalImageData, 0, 0);
+          log('Canvas reset successfully');
+        } else {
+          log('Original image data not available');
+        }
+      } catch (error) {
+        log(`Error resetting canvas: ${error.message}`);
+      }
+    });
+    
+    // Apply LUT to image (using the JS-based method provided by the user)
+    function applyLutToImage() {
+      // Get current image data
+      const imageData = originalImageData;
+      const { data, width, height } = imageData;
+      const result = new ImageData(width, height);
+      const resultData = result.data;
+      
+      log(`Processing ${width}x${height} image (${data.length} pixels)...`);
+      
+      // Apply LUT transformation
+      for (let i = 0; i < data.length; i += 4) {
+        // Get pixel RGB values normalized to [0,1]
+        const r = data[i] / 255;
+        const g = data[i + 1] / 255;
+        const b = data[i + 2] / 255;
+        
+        // Find closest LUT indices
+        const size = lut.size;
+        const x = Math.min(Math.floor(r * (size - 1)), size - 1);
+        const y = Math.min(Math.floor(g * (size - 1)), size - 1);
+        const z = Math.min(Math.floor(b * (size - 1)), size - 1);
+        
+        // Get index in the flattened LUT array
+        const idx = x + y * size + z * size * size;
+        
+        // Apply LUT transformation
+        if (idx < lut.data.length) {
+          resultData[i] = Math.round(lut.data[idx][0] * 255);
+          resultData[i + 1] = Math.round(lut.data[idx][1] * 255);
+          resultData[i + 2] = Math.round(lut.data[idx][2] * 255);
+        } else {
+          // Fallback if index is out of range
+          resultData[i] = data[i];
+          resultData[i + 1] = data[i + 1];
+          resultData[i + 2] = data[i + 2];
+        }
+        
+        // Keep original alpha
+        resultData[i + 3] = data[i + 3];
+      }
+      
+      // Draw result to canvas
+      ctx.putImageData(result, 0, 0);
+      log('LUT applied and drawn to canvas');
+    }
+    
+    // Log initial state
+    log('Page loaded. Wait for the image to load, then click the buttons to test LUT functionality.');
+  </script>
+</body>
+</html> 

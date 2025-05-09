@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lights Out LUT Test</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    
+    .image-container {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+    }
+    
+    img, canvas {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    
+    #log {
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      height: 200px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Lights Out LUT Test</h1>
+  
+  <div id="log"></div>
+  
+  <div class="buttons">
+    <button id="js-btn">Apply with JavaScript</button>
+    <button id="webgl1-btn">Apply with WebGL1</button>
+    <button id="webgl2-btn">Apply with WebGL2</button>
+    <button id="reset-btn">Reset All</button>
+    <input type="file" id="lut-upload" accept=".cube" style="display:none">
+    <button id="upload-btn">Upload LUT File</button>
+    <input type="file" id="image-upload" accept="image/*" style="display:none">
+    <button id="upload-image-btn">Upload Image</button>
+  </div>
+  
+  <div>
+    <p>Current LUT: <span id="current-lut">Lights Out (Fallback)</span></p>
+    <p>
+      <label for="preset-select">Presets: </label>
+      <select id="preset-select">
+        <option value="lights-out">Lights Out</option>
+        <option value="vintage">Vintage</option>
+        <option value="cinematic">Cinematic</option>
+        <option value="sci-fi">Sci-Fi</option>
+        <option value="serious-vintage">Serious Vintage</option>
+        <option value="normal">Normal</option>
+      </select>
+      <button id="apply-preset">Apply Preset</button>
+    </p>
+  </div>
+  
+  <div class="image-grid">
+    <div class="image-container">
+      <h3>Original</h3>
+      <img id="original" src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600" crossorigin="anonymous">
+    </div>
+    
+    <div class="image-container">
+      <h3>LUT Applied</h3>
+      <canvas id="output"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // DOM elements
+    const logElement = document.getElementById('log');
+    const originalImage = document.getElementById('original');
+    const outputCanvas = document.getElementById('output');
+    
+    // Feature detection
+    const hasWebGL1 = !!document.createElement('canvas').getContext('webgl');
+    const hasWebGL2 = !!document.createElement('canvas').getContext('webgl2');
+    
+    // Logging function
+    function log(message) {
+      console.log(message);
+      logElement.textContent += message + '\n';
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Wait for image to load
+    originalImage.onload = function() {
+      log('Original image loaded');
+      
+      // Set up output canvas
+      outputCanvas.width = originalImage.naturalWidth;
+      outputCanvas.height = originalImage.naturalHeight;
+      const ctx = outputCanvas.getContext('2d');
+      ctx.drawImage(originalImage, 0, 0);
+      
+      // Disable buttons if features not available
+      if (!hasWebGL1) {
+        document.getElementById('webgl1-btn').disabled = true;
+        log('WebGL 1.0 not supported in this browser');
+      }
+      if (!hasWebGL2) {
+        document.getElementById('webgl2-btn').disabled = true;
+        log('WebGL 2.0 not supported in this browser');
+      }
+    };
+    
+    // Add custom LUT upload functionality
+    document.getElementById('upload-btn').addEventListener('click', function() {
+      document.getElementById('lut-upload').click();
+    });
+    
+    let customLUT = null;
+    
+    document.getElementById('lut-upload').addEventListener('change', async function(e) {
+      if (!e.target.files || !e.target.files[0]) return;
+      
+      const file = e.target.files[0];
+      log(`Reading LUT file: ${file.name}`);
+      
+      try {
+        const text = await file.text();
+        customLUT = parseCubeLUT(text);
+        document.getElementById('current-lut').textContent = file.name;
+        log(`Custom LUT loaded: ${file.name} (${customLUT.size}x${customLUT.size}x${customLUT.size})`);
+      } catch (error) {
+        log(`ERROR parsing LUT file: ${error.message}`);
+        alert(`Error parsing LUT file: ${error.message}`);
+        document.getElementById('current-lut').textContent = 'Error: Invalid LUT file';
+      }
+    });
+    
+    // Add image upload functionality
+    document.getElementById('upload-image-btn').addEventListener('click', function() {
+      document.getElementById('image-upload').click();
+    });
+    
+    document.getElementById('image-upload').addEventListener('change', function(e) {
+      if (!e.target.files || !e.target.files[0]) return;
+      
+      const file = e.target.files[0];
+      log(`Loading image: ${file.name}`);
+      
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          // Update original image
+          originalImage.src = img.src;
+          
+          // Reset and setup canvas when image loads
+          originalImage.onload = function() {
+            log(`Image loaded: ${img.width}x${img.height}`);
+            
+            // Set up output canvas
+            outputCanvas.width = originalImage.naturalWidth;
+            outputCanvas.height = originalImage.naturalHeight;
+            const ctx = outputCanvas.getContext('2d');
+            ctx.drawImage(originalImage, 0, 0);
+          };
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Parse CUBE LUT file
+    async function loadLightsOutLUT() {
+      // If a custom LUT has been uploaded, use it
+      if (customLUT) {
+        return customLUT;
+      }
+      
+      // Use the specific preset name from the dropdown
+      const presetName = document.getElementById('preset-select').value;
+      const presetPath = `../src/presets/${presetName}.cube`;
+      
+      try {
+        log(`Loading preset: ${presetName} from ${presetPath}`);
+        const response = await fetch(presetPath);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to load LUT file: ${response.status} ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        const lut = parseCubeLUT(text);
+        log(`Successfully loaded preset: ${presetName}`);
+        return lut;
+      } catch (error) {
+        log(`Error loading LUT: ${error.message}`);
+        throw error; // Re-throw to prevent automatic fallback
+      }
+    }
+    
+    function parseCubeLUT(text) {
+      const lines = text.split('\n');
+      let size = 0;
+      let data = [];
+      const metadata = {};
+      let dataStartIndex = 0;
+      
+      // First pass: extract metadata and determine where data begins
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines and comments
+        if (line === '' || line.startsWith('#')) continue;
+        
+        // Extract metadata
+        if (line.startsWith('LUT_3D_SIZE')) {
+          size = parseInt(line.split(' ')[1], 10);
+          metadata.size = size;
+          log(`LUT size: ${size}x${size}x${size} (should have ${size*size*size} values)`);
+          continue;
+        }
+        
+        // Check if this line is likely the start of the data section
+        const values = line.split(/\s+/).filter(v => v !== '');
+        if (values.length === 3 && !isNaN(parseFloat(values[0]))) {
+          // This is likely a data line
+          dataStartIndex = i;
+          break;
+        }
+      }
+      
+      // Second pass: parse color data
+      for (let i = dataStartIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines and comments
+        if (line === '' || line.startsWith('#')) continue;
+        
+        // Parse color data
+        const values = line.split(/\s+/).filter(v => v !== '').map(v => parseFloat(v));
+        if (values.length === 3) {
+          data.push(values);
+        }
+      }
+      
+      log(`Parsed ${data.length} color entries from LUT file (expected ${size*size*size})`);
+      
+      // Check for size mismatch and try to fix it
+      if (size === 0) {
+        // No size declaration found, try to infer it
+        size = Math.round(Math.pow(data.length, 1/3));
+        
+        if (Math.pow(size, 3) !== data.length) {
+          // Try other common sizes
+          const commonSizes = [17, 33, 65];
+          for (const testSize of commonSizes) {
+            if (Math.abs(testSize*testSize*testSize - data.length) < 20) { // Allow small margin of error
+              size = testSize;
+              break;
+            }
+          }
+        }
+        
+        if (size === 0) {
+          throw new Error(`Could not determine LUT size from ${data.length} entries`);
+        }
+        
+        log(`Inferred LUT size: ${size}x${size}x${size}`);
+      } else if (data.length !== size * size * size) {
+        const expectedCount = size * size * size;
+        const diff = Math.abs(expectedCount - data.length);
+        
+        // Check if we're close enough (within a small margin of error)
+        if (diff <= 20) {
+          log(`WARNING: LUT data count mismatch. Expected ${expectedCount}, got ${data.length}. Continuing anyway.`);
+          
+          // If we have too few entries, pad with the last entry
+          if (data.length < expectedCount) {
+            const lastEntry = data[data.length - 1];
+            while (data.length < expectedCount) {
+              data.push([...lastEntry]);
+            }
+            log(`Padded LUT with ${diff} additional entries to match expected size.`);
+          } 
+          // If we have too many entries, truncate
+          else if (data.length > expectedCount) {
+            data = data.slice(0, expectedCount);
+            log(`Truncated LUT by ${diff} entries to match expected size.`);
+          }
+        } else {
+          throw new Error(`Invalid LUT file: Expected ${expectedCount} values, but got ${data.length}. Size mismatch is too large to fix automatically.`);
+        }
+      }
+      
+      log(`LUT parsed successfully with ${data.length} color entries`);
+      return { size, data, metadata, title: 'Loaded LUT' };
+    }
+    
+    // Create a fallback "lights-out" LUT (lower contrast, bluish shadows)
+    function createFallbackLightsOutLUT() {
+      const size = 17; // Standard size
+      const data = [];
+      
+      for (let b = 0; b < size; b++) {
+        for (let g = 0; g < size; g++) {
+          for (let r = 0; r < size; r++) {
+            // Convert to normalized coordinates [0,1]
+            const rn = r / (size - 1);
+            const gn = g / (size - 1);
+            const bn = b / (size - 1);
+            
+            // Lights Out effect (lower contrast, bluish shadows)
+            let finalR = rn * 0.9;
+            let finalG = gn * 0.95;
+            let finalB = bn + 0.05;
+            
+            // Slightly reduce contrast
+            finalR = finalR * 0.8 + 0.05;
+            finalG = finalG * 0.8 + 0.05;
+            finalB = finalB * 0.8 + 0.1;
+            
+            // Clamp values
+            finalR = Math.min(1.0, Math.max(0.0, finalR));
+            finalG = Math.min(1.0, Math.max(0.0, finalG));
+            finalB = Math.min(1.0, Math.max(0.0, finalB));
+            
+            data.push([finalR, finalG, finalB]);
+          }
+        }
+      }
+      
+      log(`Created fallback LUT with size ${size}x${size}x${size} (${data.length} entries)`);
+      return { size, data, metadata: {}, title: 'Lights Out (Fallback)' };
+    }
+    
+    // Reset output canvas
+    document.getElementById('reset-btn').addEventListener('click', function() {
+      const ctx = outputCanvas.getContext('2d');
+      ctx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+      ctx.drawImage(originalImage, 0, 0);
+      log('Reset canvas to original image');
+    });
+    
+    // JavaScript Implementation
+    document.getElementById('js-btn').addEventListener('click', async function() {
+      try {
+        log('Applying LUT with JavaScript...');
+        const startTime = performance.now();
+        
+        // Load LUT
+        let lut;
+        try {
+          lut = await loadLightsOutLUT();
+        } catch (error) {
+          // Display error message in a more visible way
+          log(`ERROR: ${error.message}`);
+          alert(`Failed to load LUT: ${error.message}`);
+          return;
+        }
+        
+        // Get canvas and context
+        const ctx = outputCanvas.getContext('2d');
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+        const { data } = imageData;
+        
+        // Apply LUT
+        const size = lut.size;
+        const scale = size - 1;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // Get pixel RGB values normalized to [0,1]
+          const r = data[i] / 255;
+          const g = data[i + 1] / 255;
+          const b = data[i + 2] / 255;
+          
+          // Scale the coordinates to match the LUT size
+          const rScaled = r * scale;
+          const gScaled = g * scale;
+          const bScaled = b * scale;
+          
+          // Floor + 0.5 is equivalent to round - for consistent texture sampling
+          const ri = Math.min(Math.floor(rScaled + 0.5), scale);
+          const gi = Math.min(Math.floor(gScaled + 0.5), scale);
+          const bi = Math.min(Math.floor(bScaled + 0.5), scale);
+          
+          // Calculate index in the flattened LUT array
+          const idx = bi * size * size + gi * size + ri;
+          
+          // Apply the new color
+          data[i] = Math.round(lut.data[idx][0] * 255);     // R
+          data[i + 1] = Math.round(lut.data[idx][1] * 255); // G
+          data[i + 2] = Math.round(lut.data[idx][2] * 255); // B
+          // Alpha stays unchanged
+        }
+        
+        // Put processed data back
+        ctx.putImageData(imageData, 0, 0);
+        
+        const endTime = performance.now();
+        log(`JavaScript LUT application complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error: ${error.message}`);
+        alert(`Error applying LUT: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Convert 3D LUT to a 2D texture for WebGL
+    function convertLUTto2DTexture(lut) {
+      const size = lut.size;
+      const width = size * size;
+      const height = size;
+      const data = new Uint8Array(width * height * 4);
+      
+      for (let b = 0; b < size; b++) {
+        for (let g = 0; g < size; g++) {
+          for (let r = 0; r < size; r++) {
+            // Calculate the 1D index
+            const index = r + g * size + b * size * size;
+            
+            // Convert to 2D coordinates in the texture
+            const x = index % width;
+            const y = Math.floor(index / width);
+            
+            // Calculate the index in the 2D texture data array (RGBA format)
+            const idx2D = (y * width + x) * 4;
+            
+            // Get the color from the LUT
+            const idx3D = b * size * size + g * size + r;
+            
+            // Copy color values
+            data[idx2D] = Math.round(lut.data[idx3D][0] * 255);     // R
+            data[idx2D + 1] = Math.round(lut.data[idx3D][1] * 255); // G
+            data[idx2D + 2] = Math.round(lut.data[idx3D][2] * 255); // B
+            data[idx2D + 3] = 255;                                  // A (opaque)
+          }
+        }
+      }
+      
+      return { width, height, data };
+    }
+    
+    // WebGL 1.0 Implementation
+    document.getElementById('webgl1-btn').addEventListener('click', async function() {
+      if (!hasWebGL1) {
+        log('WebGL 1.0 not supported in this browser');
+        return;
+      }
+      
+      try {
+        log('Applying LUT with WebGL 1.0...');
+        const startTime = performance.now();
+        
+        // Load LUT
+        let lut;
+        try {
+          lut = await loadLightsOutLUT();
+        } catch (error) {
+          // Display error message in a more visible way
+          log(`ERROR: ${error.message}`);
+          alert(`Failed to load LUT: ${error.message}`);
+          return;
+        }
+        
+        // Create temporary canvas for WebGL processing
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = outputCanvas.width;
+        tempCanvas.height = outputCanvas.height;
+        const gl = tempCanvas.getContext('webgl');
+        
+        // Create shaders
+        const vertexShaderSource = `
+          attribute vec4 aPosition;
+          attribute vec2 aTexCoord;
+          varying vec2 vTexCoord;
+          
+          void main() {
+            gl_Position = aPosition;
+            vTexCoord = aTexCoord;
+          }
+        `;
+        
+        const fragmentShaderSource = `
+          precision highp float;
+          
+          uniform sampler2D uImage;
+          uniform sampler2D uLut;
+          uniform float uSize;
+          
+          varying vec2 vTexCoord;
+          
+          // Convert 3D coordinates to 2D coordinates in the tiled texture
+          vec2 lutCoordTo2D(vec3 lutCoord) {
+            float lutSize = uSize;
+            
+            // Clamp input coordinates to [0,1]
+            lutCoord = clamp(lutCoord, 0.0, 1.0);
+            
+            // Scale the coordinates to the grid size-1
+            float scale = lutSize - 1.0;
+            vec3 scaled = lutCoord * scale;
+            
+            // Floor + 0.5 is equivalent to round, which matches the JS implementation
+            float r = min(floor(scaled.r + 0.5), scale);
+            float g = min(floor(scaled.g + 0.5), scale);
+            float b = min(floor(scaled.b + 0.5), scale);
+            
+            // Calculate index into the flattened LUT array
+            float index = r + g * lutSize + b * lutSize * lutSize;
+            
+            // Calculate the 2D texture position
+            float texWidth = lutSize * lutSize;
+            float texHeight = lutSize;
+            
+            // Convert the 1D index to a 2D position in the texture
+            float x = mod(index, texWidth);
+            float y = floor(index / texWidth);
+            
+            // Normalize coordinates to [0,1] range for texturing
+            // Adding 0.5 to sample at the center of the texel
+            vec2 uv = vec2(
+              (x + 0.5) / texWidth,
+              (y + 0.5) / texHeight
+            );
+            
+            return uv;
+          }
+          
+          void main() {
+            // WebGL textures have origin at bottom-left, flip Y coordinate
+            vec2 texCoord = vec2(vTexCoord.x, 1.0 - vTexCoord.y);
+            
+            // Sample the original image
+            vec4 color = texture2D(uImage, texCoord);
+            
+            // Get LUT coordinates
+            vec3 lutCoord = clamp(color.rgb, 0.0, 1.0);
+            
+            // Convert to 2D texture coordinates
+            vec2 lutUV = lutCoordTo2D(lutCoord);
+            
+            // Sample the LUT
+            vec3 gradedColor = texture2D(uLut, lutUV).rgb;
+            
+            // Output final color with original alpha
+            gl_FragColor = vec4(gradedColor, color.a);
+          }
+        `;
+        
+        // Compile shaders
+        function createShader(gl, type, source) {
+          const shader = gl.createShader(type);
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            const info = gl.getShaderInfoLog(shader);
+            gl.deleteShader(shader);
+            throw new Error(`Shader compilation error: ${info}`);
+          }
+          
+          return shader;
+        }
+        
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+        
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          throw new Error(`Program linking error: ${info}`);
+        }
+        
+        // Set up buffers
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,  1, -1,  -1, 1,  1, 1
+        ]), gl.STATIC_DRAW);
+        
+        const texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          0, 0, 1, 0, 0, 1, 1, 1
+        ]), gl.STATIC_DRAW);
+        
+        // Set viewport
+        gl.viewport(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Create image texture
+        const imageTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, originalImage);
+        
+        // Convert LUT to 2D texture format for WebGL1 lookup
+        const lut2D = convertLUTto2DTexture(lut);
+        
+        // Create LUT texture
+        const lutTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // Upload LUT data
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          lut2D.width,
+          lut2D.height,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          lut2D.data
+        );
+        
+        // Clear canvas
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Use program
+        gl.useProgram(program);
+        
+        // Set attributes
+        const posAttr = gl.getAttribLocation(program, 'aPosition');
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        const texAttr = gl.getAttribLocation(program, 'aTexCoord');
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texAttr);
+        gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        // Set uniforms
+        gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uLut'), 1);
+        gl.uniform1f(gl.getUniformLocation(program, 'uSize'), lut.size);
+        
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Copy result to output canvas
+        const ctx = outputCanvas.getContext('2d');
+        ctx.drawImage(tempCanvas, 0, 0);
+        
+        const endTime = performance.now();
+        log(`WebGL 1.0 LUT application complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // WebGL 2.0 Implementation
+    document.getElementById('webgl2-btn').addEventListener('click', async function() {
+      if (!hasWebGL2) {
+        log('WebGL 2.0 not supported in this browser');
+        return;
+      }
+      
+      try {
+        log('Applying LUT with WebGL 2.0...');
+        const startTime = performance.now();
+        
+        // Load LUT
+        let lut;
+        try {
+          lut = await loadLightsOutLUT();
+        } catch (error) {
+          // Display error message in a more visible way
+          log(`ERROR: ${error.message}`);
+          alert(`Failed to load LUT: ${error.message}`);
+          return;
+        }
+        
+        // Create temporary canvas for WebGL processing
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = outputCanvas.width;
+        tempCanvas.height = outputCanvas.height;
+        const gl = tempCanvas.getContext('webgl2');
+        
+        // Create shaders
+        const vertexShaderSource = `#version 300 es
+          in vec4 aPosition;
+          in vec2 aTexCoord;
+          out vec2 vTexCoord;
+          
+          void main() {
+            gl_Position = aPosition;
+            vTexCoord = aTexCoord;
+          }
+        `;
+        
+        const fragmentShaderSource = `#version 300 es
+          precision highp float;
+          
+          uniform sampler2D uImage;
+          uniform sampler2D uLut;
+          uniform float uSize;
+          
+          in vec2 vTexCoord;
+          out vec4 fragColor;
+          
+          // Convert 3D coordinates to 2D coordinates in the tiled texture
+          vec2 lutCoordTo2D(vec3 lutCoord) {
+            float lutSize = uSize;
+            
+            // Clamp input coordinates to [0,1]
+            lutCoord = clamp(lutCoord, 0.0, 1.0);
+            
+            // Scale the coordinates to the grid size-1
+            float scale = lutSize - 1.0;
+            vec3 scaled = lutCoord * scale;
+            
+            // Floor + 0.5 is equivalent to round, which matches the JS implementation
+            float r = min(floor(scaled.r + 0.5), scale);
+            float g = min(floor(scaled.g + 0.5), scale);
+            float b = min(floor(scaled.b + 0.5), scale);
+            
+            // Calculate index into the flattened LUT array
+            float index = r + g * lutSize + b * lutSize * lutSize;
+            
+            // Calculate the 2D texture position
+            float texWidth = lutSize * lutSize;
+            float texHeight = lutSize;
+            
+            // Convert the 1D index to a 2D position in the texture
+            float x = mod(index, texWidth);
+            float y = floor(index / texWidth);
+            
+            // Normalize coordinates to [0,1] range for texturing
+            // Adding 0.5 to sample at the center of the texel
+            vec2 uv = vec2(
+              (x + 0.5) / texWidth,
+              (y + 0.5) / texHeight
+            );
+            
+            return uv;
+          }
+          
+          void main() {
+            // WebGL textures have origin at bottom-left, flip Y coordinate
+            vec2 texCoord = vec2(vTexCoord.x, 1.0 - vTexCoord.y);
+            
+            // Sample the original image
+            vec4 color = texture(uImage, texCoord);
+            
+            // Get LUT coordinates
+            vec3 lutCoord = clamp(color.rgb, 0.0, 1.0);
+            
+            // Convert to 2D texture coordinates
+            vec2 lutUV = lutCoordTo2D(lutCoord);
+            
+            // Sample the LUT
+            vec3 gradedColor = texture(uLut, lutUV).rgb;
+            
+            // Output final color with original alpha
+            fragColor = vec4(gradedColor, color.a);
+          }
+        `;
+        
+        // Compile shaders
+        function createShader(gl, type, source) {
+          const shader = gl.createShader(type);
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            const info = gl.getShaderInfoLog(shader);
+            gl.deleteShader(shader);
+            throw new Error(`Shader compilation error: ${info}`);
+          }
+          
+          return shader;
+        }
+        
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+        
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          throw new Error(`Program linking error: ${info}`);
+        }
+        
+        // Set up buffers
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          -1, -1,  1, -1,  -1, 1,  1, 1
+        ]), gl.STATIC_DRAW);
+        
+        const texCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+          0, 0, 1, 0, 0, 1, 1, 1
+        ]), gl.STATIC_DRAW);
+        
+        // Set viewport
+        gl.viewport(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Create image texture
+        const imageTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, originalImage);
+        
+        // Convert LUT to 2D texture format 
+        const lut2D = convertLUTto2DTexture(lut);
+        
+        // Create LUT texture
+        const lutTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        // Upload LUT data
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          lut2D.width,
+          lut2D.height,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          lut2D.data
+        );
+        
+        // Clear canvas
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        
+        // Use program
+        gl.useProgram(program);
+        
+        // Set attributes
+        const posAttr = gl.getAttribLocation(program, 'aPosition');
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(posAttr);
+        gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        const texAttr = gl.getAttribLocation(program, 'aTexCoord');
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.enableVertexAttribArray(texAttr);
+        gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+        
+        // Set uniforms
+        gl.uniform1i(gl.getUniformLocation(program, 'uImage'), 0);
+        gl.uniform1i(gl.getUniformLocation(program, 'uLut'), 1);
+        gl.uniform1f(gl.getUniformLocation(program, 'uSize'), lut.size);
+        
+        // Bind textures
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, imageTexture);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        
+        // Draw
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        
+        // Copy result to output canvas
+        const ctx = outputCanvas.getContext('2d');
+        ctx.drawImage(tempCanvas, 0, 0);
+        
+        const endTime = performance.now();
+        log(`WebGL 2.0 LUT application complete in ${(endTime - startTime).toFixed(2)}ms`);
+      } catch (error) {
+        log(`Error: ${error.message}`);
+        console.error(error);
+      }
+    });
+    
+    // Handle preset selection
+    document.getElementById('apply-preset').addEventListener('click', async function() {
+      const preset = document.getElementById('preset-select').value;
+      customLUT = null; // Clear any custom LUT
+      document.getElementById('current-lut').textContent = preset;
+      
+      // Apply the LUT directly without creating it
+      try {
+        const jsBtn = document.getElementById('js-btn');
+        jsBtn.click();
+      } catch (error) {
+        log(`Error applying preset: ${error.message}`);
+        alert(`Error applying preset: ${error.message}`);
+      }
+    });
+  </script>
+</body>
+</html> 
