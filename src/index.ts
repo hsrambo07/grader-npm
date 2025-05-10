@@ -1,9 +1,8 @@
-import { loadPreset, isValidPreset, parseCubeFile, preloadAllPresets, PRESETS } from './presets';
+import { loadPreset, isValidPreset, preloadAllPresets, PRESETS } from './presets';
+import { parseCubeFile, createIdentityLut as ImportedCreateIdentityLut } from './core/lutLoader';
 import { apply, resetImage } from './core/apply';
 import type { ApplyOptions } from './core/apply';
 import type { ParsedLut } from './core/lutLoader';
-import { disposeEngines } from './core/apply';
-import { createIdentityLut } from './core/lutLoader';
 
 // Types
 export interface InitOptions {
@@ -66,7 +65,7 @@ export class ColorGrader {
   public static async apply(options: ApplyOptions): Promise<HTMLImageElement | NodeListOf<HTMLImageElement> | null> {
     if (!isBrowser) return null;
     
-    const { target, mode, lut, strength = this.defaultStrength, scope } = options;
+    const { target, mode, lut, strength = this.defaultStrength } = options;
     
     // Handle selector string
     if (typeof target === 'string') {
@@ -79,7 +78,6 @@ export class ColorGrader {
         target,
         lut,
         strength,
-        scope,
       });
     }
     
@@ -91,7 +89,6 @@ export class ColorGrader {
           target,
           lut: lutData,
           strength,
-          scope,
         });
       } catch (error) {
         console.error(`Failed to apply mode "${mode}":`, error);
@@ -106,7 +103,6 @@ export class ColorGrader {
         target,
         lut: lutData,
         strength,
-        scope,
       });
     } catch (error) {
       console.error('Failed to apply default mode:', error);
@@ -253,9 +249,6 @@ export class ColorGrader {
     // Reset all images
     this.reset();
     
-    // Clean up GL resources
-    disposeEngines();
-    
     // Clear custom LUTs
     this.customLuts.clear();
     
@@ -273,7 +266,7 @@ export class ColorGrader {
     selector: string,
     mode?: string,
     strength: number = this.defaultStrength
-  ): Promise<NodeListOf<HTMLImageElement> | null> {
+  ): Promise<HTMLImageElement | NodeListOf<HTMLImageElement> | null> {
     if (!isBrowser) return null;
     
     const images = document.querySelectorAll<HTMLImageElement>(selector);
@@ -361,7 +354,7 @@ export class ColorGrader {
 // Export types
 export type { ParsedLut } from './core/lutLoader';
 export type { ApplyOptions } from './core/apply';
-export { PRESETS, createIdentityLut };
+export { PRESETS, ImportedCreateIdentityLut as createIdentityLut, parseCubeFile };
 
 // Export default
 export default ColorGrader; 

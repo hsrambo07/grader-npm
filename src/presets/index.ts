@@ -1,5 +1,6 @@
-import { loadCubeFromUrl, parseCubeFile, createIdentityLut } from '../core/lutLoader';
+import { createIdentityLut } from '../core/lutLoader';
 import type { ParsedLut } from '../core/lutLoader';
+import { PRESET_DATA } from './generatedPresetData'; // Import preprocessed data
 
 // Preset names
 export const PRESETS = {
@@ -13,18 +14,11 @@ export const PRESETS = {
 
 export type PresetName = typeof PRESETS[keyof typeof PRESETS];
 
-// Relative URLs to preset LUTs
-const PRESET_URLS: Record<PresetName, string> = {
-  [PRESETS.NORMAL]: new URL('./normal.cube', import.meta.url).href,
-  [PRESETS.VINTAGE]: new URL('./vintage.cube', import.meta.url).href,
-  [PRESETS.CINEMATIC]: new URL('./cinematic.cube', import.meta.url).href,
-  [PRESETS.SERIOUS_VINTAGE]: new URL('./serious-vintage.cube', import.meta.url).href,
-  [PRESETS.LIGHTS_OUT]: new URL('./lights-out.cube', import.meta.url).href,
-  [PRESETS.SCI_FI]: new URL('./sci-fi.cube', import.meta.url).href,
-};
+// Relative URLs to preset LUTs - REMOVE
+// const PRESET_URLS: Record<PresetName, string> = { ... };
 
-// Cache for loaded presets
-const presetCache = new Map<PresetName, ParsedLut>();
+// Cache for loaded presets - REMOVE
+// const presetCache = new Map<PresetName, ParsedLut>();
 
 /**
  * Loads a preset LUT by name
@@ -32,58 +26,25 @@ const presetCache = new Map<PresetName, ParsedLut>();
  * @returns Promise resolving to the loaded LUT
  */
 export async function loadPreset(name: PresetName): Promise<ParsedLut> {
-  // Return from cache if available
-  if (presetCache.has(name)) {
-    return presetCache.get(name)!;
-  }
-  
-  try {
-    // First try to load the LUT from the URL
-    const url = PRESET_URLS[name];
+  const lutData = PRESET_DATA[name];
+
+  if (lutData) {
+    // Ensure the data is a Float32Array, as it comes from generated code
+    // This might be redundant if generatedPresetData.ts already constructs Float32Array instances
+    // but good for safety if the generation process changes.
+    // However, given our generation script, lutData.data should already be a Float32Array.
+    return lutData;
+  } else {
+    // Fallback logic if preset is not found in preprocessed data
+    console.warn(`Preset "${name}" not found in preprocessed data. Using programmatic fallback.`);
     
-    try {
-      // Try to load from URL
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch LUT: ${response.statusText}`);
-      }
-      
-      const text = await response.text();
-      const lut = parseCubeFile(text);
-      
-      // Validate the LUT - ensure it has the correct number of entries
-      const expectedEntries = lut.size * lut.size * lut.size * 3;
-      if (lut.data.length !== expectedEntries) {
-        console.warn(`LUT '${name}' has incomplete data (${lut.data.length} vs expected ${expectedEntries}). Using programmatic fallback.`);
-        throw new Error('Incomplete LUT data');
-      }
-      
-      // Cache for future use
-      presetCache.set(name, lut);
-      return lut;
-    } catch (error) {
-      // If loading fails, generate a programmatic fallback
-      console.warn(`Failed to load preset "${name}" from URL, using programmatic fallback:`, error);
-      
-      // For normal preset, use identity LUT
-      if (name === PRESETS.NORMAL) {
-        const fallback = createIdentityLut(17);
-        presetCache.set(name, fallback);
-        return fallback;
-      }
-      
-      // For other presets, create a colored LUT
-      const fallback = createProgrammaticLut(name);
-      presetCache.set(name, fallback);
-      return fallback;
+    // For normal preset, use identity LUT
+    if (name === PRESETS.NORMAL) {
+      return createIdentityLut(17); // Fallback size
     }
-  } catch (error) {
-    console.error(`Failed to load preset "${name}":`, error);
     
-    // Ultimate fallback to identity LUT
-    const fallback = createIdentityLut();
-    presetCache.set(name, fallback);
-    return fallback;
+    // For other presets, create a colored LUT
+    return createProgrammaticLut(name);
   }
 }
 
@@ -177,12 +138,11 @@ export function isValidPreset(name: string): name is PresetName {
  * Preloads all preset LUTs in the background
  */
 export function preloadAllPresets(): void {
-  Object.values(PRESETS).forEach(preset => {
-    loadPreset(preset as PresetName).catch(() => {
-      // Errors already logged in loadPreset
-    });
-  });
+  // Preloading is no longer necessary as data is embedded
+  // This function can be kept as a no-op or removed.
+  // For now, let's make it a no-op.
+  console.log("Presets are preprocessed and embedded. No runtime preloading needed.");
 }
 
 // Helper function to load a LUT from text directly
-export { parseCubeFile, createIdentityLut }; 
+export { createIdentityLut }; 
