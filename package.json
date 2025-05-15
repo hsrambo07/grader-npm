@@ -11,9 +11,9 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -21,7 +21,8 @@
   ],
   "scripts": {
     "dev": "vite examples",
-    "build": "tsup",
+    "build": "npm run preprocess:presets && tsup",
+    "preprocess:presets": "npx tsx ./scripts/preprocess-presets.mts",
     "test": "vitest run",
     "lint": "eslint src",
     "format": "prettier --write src"
@@ -34,6 +35,7 @@
     "happy-dom": "^12.10.3",
     "prettier": "^3.1.0",
     "tsup": "^8.0.1",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.2",
     "vite": "^5.0.2",
     "vitest": "^0.34.6"
